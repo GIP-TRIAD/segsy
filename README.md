@@ -14,7 +14,7 @@ Segsy — it's either that or using Excel after it finishes its 1.9 GB update
 
 ## Overview
 
-[Segsy](https://git-triad.github.io/segsy/) is a simple, lightweight Gantt chart editor that runs entirely in the browser, with everything contained in a single HTML file that you can download and use completely offline.
+[Segsy](https://gip-triad.github.io/segsy/) is a simple, lightweight Gantt chart editor that runs entirely in the browser, with everything contained in a single HTML file that you can download and use completely offline.
 
 <a href="https://gip-triad.github.io/segsy/">
   <img src="./assets//screenshot.png" alt="Gantt chart screenshot" title="Launch Segsy!">
