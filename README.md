@@ -25,6 +25,7 @@ Segsy — it's either that or using Excel after it finishes its 1.9 GB update
 - **Drag to move, resize and reorder** — grab any bar and slide it left or right along the timeline, pull the left or right edge of a bar to change its start or end date or use the grip handle on the left to drag rows up or down
 - **Rename tasks** — click any task name to edit it inline
 - **Delete tasks** — right-click a task label and confirm
+- **Split tasks** — double click on a task track to add another segment
 - **Color picker** — click the color dot next to a task name to choose from 9 predefined named colors, or select any custom color
 - **Zoom** — switch between day, week or month view, zoom in/out or fit-to-width
 - **Task info on hover** — hover a task to see its start date, end date and duration below the chart
