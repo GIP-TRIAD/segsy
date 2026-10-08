@@ -1230,7 +1230,7 @@ function _makeBar(task, spanCols, extraPx, segIdx) {
   const lh = document.createElement('div');
   lh.className='resize-handle left'; lh.dataset.id=task.id; lh.dataset.action='left'; lh.dataset.seg=segIdx||0;
   const bl = document.createElement('span');
-  bl.className='bar-label'; bl.textContent=(segIdx||0)===0 ? task.name : '';
+  bl.className='bar-label'; bl.textContent=task.name;
   const rh = document.createElement('div');
   rh.className='resize-handle right'; rh.dataset.id=task.id; rh.dataset.action='right'; rh.dataset.seg=segIdx||0;
   bar.appendChild(lh); bar.appendChild(bl); bar.appendChild(rh);
@@ -1278,10 +1278,10 @@ function _placeBarUnified(tr, task, totalDays) {
       }
     }
 
-    // Tooltip only when the label is clipped (label exists on segment 0 only).
+    // Tooltip only when the label is clipped.
     // Must live on `bar`: .bar-label has pointer-events:none.
     const bl = bar.querySelector('.bar-label');
-    if (i === 0 && bl.scrollWidth > bl.clientWidth) bar.title = task.name;
+    if (bl.scrollWidth > bl.clientWidth) bar.title = task.name;
   });
 }
 
@@ -1931,7 +1931,7 @@ function renderChartCanvas() {
       }
       ctx.fillStyle=task.color;
       ctx.beginPath(); ctx.roundRect(bx,y+6,bw,bh,4); ctx.fill();
-      if (si===0 && bw>20) {
+      if (bw>20) {
         ctx.font='500 10px system-ui,sans-serif'; ctx.fillStyle='#fff';
         ctx.save(); ctx.beginPath(); ctx.rect(bx+2,y+6,bw-4,bh); ctx.clip();
         ctx.fillText(task.name, bx+6, y+6+bh/2+3); ctx.restore();
