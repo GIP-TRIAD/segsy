@@ -1,5 +1,5 @@
 <h1 align="center" style="margin:0;">
-<img src="./assets/banner.png" alt="Segsy banner" width="400">
+<img src="./assets/banner.png" alt="Segsy banner" width="800">
 </h1>
 <h3 align="center" style="margin: 0; margin-top: 0;">
 Segsy — it's either that or using Excel after it finishes its 1.9 GB update
