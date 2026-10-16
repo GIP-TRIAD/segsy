@@ -302,11 +302,6 @@
       transition: opacity 0.1s; min-width: 6px; z-index: 2;
     }
 
-    .seg-link {
-      position: absolute; top: 50%; height: 2px; margin-top: -1px;
-      opacity: 0.45; pointer-events: none; z-index: 1;
-    }
-
     .bar:hover  { opacity: 0.85; }
     .bar:active { cursor: grabbing; }
 
@@ -379,6 +374,28 @@
       font-size: 13px; z-index: 500;
       transition: opacity 0.4s; pointer-events: none;
     }
+
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0; z-index: 400;
+      background: rgba(0,0,0,0.45); align-items: center; justify-content: center; padding: 1rem;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border-strong); border-radius: var(--radius);
+      width: 100%; max-width: 640px; padding: 1.25rem; box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    }
+    .modal h2 { margin: 0 0 1rem; font-size: 16px; }
+    .modal label { display: block; font-size: 12px; color: var(--text-muted); margin: 0.75rem 0 4px; }
+    .modal .copy-row { display: flex; gap: 8px; }
+    .modal .copy-row input {
+      flex: 1; min-width: 0; padding: 6px 8px; font: 12px monospace;
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border-strong); border-radius: var(--radius);
+    }
+    .modal .modal-note { font-size: 12px; color: var(--text-muted); margin-top: 0.75rem; }
+    .modal .modal-note.warn { color: #D85A30; }
+    .modal .modal-actions { display: flex; justify-content: flex-end; margin-top: 1rem; }
 
     footer { margin-top: 1.5rem; font-size: 12px; color: var(--text-muted); }
 
@@ -474,8 +491,27 @@
       <div class="export-menu" id="exportMenu">
         <button onclick="exportPNG(); closeExportMenu();">PNG</button>
         <button onclick="exportPDF(); closeExportMenu();">PDF</button>
+        <button onclick="openLinkModal(); closeExportMenu();">Markdown link</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="linkModal" onclick="if(event.target===this) closeLinkModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="linkModalTitle">
+    <h2 id="linkModalTitle">Markdown link</h2>
+    <label for="linkUrl">URL</label>
+    <div class="copy-row">
+      <input id="linkUrl" type="text" readonly onfocus="this.select()">
+      <button onclick="copyField('linkUrl')">Copy</button>
+    </div>
+    <label for="linkMd">Markdown</label>
+    <div class="copy-row">
+      <input id="linkMd" type="text" readonly onfocus="this.select()">
+      <button onclick="copyField('linkMd')">Copy</button>
+    </div>
+    <div class="modal-note" id="linkNote"></div>
+    <div class="modal-actions"><button onclick="closeLinkModal()">Close</button></div>
   </div>
 </div>
 
@@ -510,8 +546,7 @@
 <footer>
   Drag <svg class="ti" style="font-size:12px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M8 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M8 19a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M14 5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M14 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M14 19a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></svg> to reorder rows &nbsp;·&nbsp;
   Right-click a task label to delete &nbsp;·&nbsp;
-  Drag bar edges to resize &nbsp;·&nbsp;
-  Double-click a bar to split it, an empty cell to add a segment, right-click a segment to remove it
+  Drag bar edges to resize
 </footer>
 
 <script>
@@ -1190,49 +1225,18 @@ function _makeLabelTd(task) {
   return labelTd;
 }
 
-// ── Segments (discontinuous tasks) ──────────────────────────────────────────
-// A task may carry `segments: [{start,dur}, ...]` (day offsets from baseDate,
-// sorted, non-overlapping). task.start/task.dur always hold the overall span
-// (first segment start → last segment end), so everything that only cares
-// about the span — and save files without `segments` — keeps working.
-function segsOf(task) {
-  return task.segments && task.segments.length
-    ? task.segments
-    : [{ start: task.start, dur: task.dur }];
-}
-// Sanitizes, sorts, de-overlaps, and re-derives the overall span.
-function setSegs(task, segs) {
-  const clean = (segs || [])
-    .map(g => ({ start: Math.round(+g.start), dur: Math.round(+g.dur) }))
-    .filter(g => Number.isFinite(g.start) && Number.isFinite(g.dur) && g.dur >= 1)
-    .sort((a, b) => a.start - b.start);
-  const out = [];
-  for (const g of clean) {
-    const prevEnd = out.length ? out[out.length-1].start + out[out.length-1].dur : -Infinity;
-    const st = Math.max(g.start, prevEnd);
-    const end = g.start + g.dur;
-    if (end > st) out.push({ start: st, dur: end - st });
-  }
-  if (!out.length) return; // keep existing data rather than emptying the task
-  task.start = out[0].start;
-  task.dur   = out[out.length-1].start + out[out.length-1].dur - out[0].start;
-  if (out.length > 1) task.segments = out; else delete task.segments;
-}
-function totalDur(task) { return segsOf(task).reduce((n, g) => n + g.dur, 0); }
-
 // ── Bar placement helpers ───────────────────────────────────────────────────
-function _makeBar(task, spanCols, extraPx, segIdx) {
+function _makeBar(task, spanCols, extraPx) {
   const bar = document.createElement('div');
   bar.className  = 'bar';
   bar.dataset.id = task.id;
-  bar.dataset.seg = segIdx || 0;
   bar.style.cssText = `background:${task.color};left:0;width:calc(${spanCols*100}% + ${extraPx}px);`;
   const lh = document.createElement('div');
-  lh.className='resize-handle left'; lh.dataset.id=task.id; lh.dataset.action='left'; lh.dataset.seg=segIdx||0;
+  lh.className='resize-handle left'; lh.dataset.id=task.id; lh.dataset.action='left';
   const bl = document.createElement('span');
   bl.className='bar-label'; bl.textContent=task.name;
   const rh = document.createElement('div');
-  rh.className='resize-handle right'; rh.dataset.id=task.id; rh.dataset.action='right'; rh.dataset.seg=segIdx||0;
+  rh.className='resize-handle right'; rh.dataset.id=task.id; rh.dataset.action='right';
   bar.appendChild(lh); bar.appendChild(bl); bar.appendChild(rh);
   return bar;
 }
@@ -1242,47 +1246,32 @@ function _makeBar(task, spanCols, extraPx, segIdx) {
 // pixels always agree exactly with the columns it's drawn on top of —
 // there is no separate/duplicated geometry to drift out of sync.
 function _placeBarUnified(tr, task, totalDays) {
-  const segs = segsOf(task);
-  segs.forEach((g, i) => {
-    const barStart = Math.max(0, g.start);
-    const barEnd   = Math.min(totalDays, g.start + g.dur);
-    if (barStart >= totalDays || barEnd <= 0) return;
+  const barStart = Math.max(0, task.start);
+  const barEnd   = Math.min(totalDays, task.start + task.dur);
+  if (barStart >= totalDays || barEnd <= 0) return;
 
-    const leftAbs  = dayToX(barStart);
-    const rightAbs = dayToX(barEnd);
-    const startCol = colIndexForDay(barStart);
-    const startCell = tr.cells[startCol + 1];
-    if (!startCell) return;
+  const leftAbs  = dayToX(barStart);
+  const rightAbs = dayToX(barEnd);
+  const startCol = colIndexForDay(barStart);
+  const startCell = tr.cells[startCol + 1];
+  if (!startCell) return;
 
-    const leftPx  = leftAbs - startCol * cellW;
-    const widthPx = rightAbs - leftAbs;
+  const leftPx  = leftAbs - startCol * cellW;
+  const widthPx = rightAbs - leftAbs;
 
-    const bar = _makeBar(task, 0, 0, i);
-    bar.style.cssText = `background:${task.color};left:${leftPx}px;width:${Math.max(2, widthPx - 1)}px;`;
-    startCell.appendChild(bar);
+  const bar = _makeBar(task, 0, 0);
+  bar.style.cssText = `background:${task.color};left:${leftPx}px;width:${Math.max(2, widthPx - 1)}px;`;
+  startCell.appendChild(bar);
 
-    // Connector across the gap to the next segment (same dayToX geometry).
-    const nx = segs[i+1];
-    if (nx && nx.start < totalDays && nx.start > g.start + g.dur) {
-      const gapL = rightAbs;
-      const gapR = dayToX(Math.min(totalDays, nx.start));
-      if (gapR > gapL) {
-        const link = document.createElement('div');
-        link.className = 'seg-link';
-        link.style.cssText = `background:${task.color};left:${gapL - startCol*cellW}px;width:${gapR - gapL}px;`;
-        // Anchor in the cell holding the gap start so offsets stay local.
-        const col = colIndexForDay(Math.max(0, Math.min(totalDays-1, g.start + g.dur)));
-        const anchor = tr.cells[col + 1] || startCell;
-        link.style.left = (gapL - col*cellW) + 'px';
-        anchor.appendChild(link);
-      }
-    }
-
-    // Tooltip only when the label is clipped.
-    // Must live on `bar`: .bar-label has pointer-events:none.
-    const bl = bar.querySelector('.bar-label');
-    if (bl.scrollWidth > bl.clientWidth) bar.title = task.name;
-  });
+  // Only show a hover tooltip when the label is actually clipped by the
+  // bar's width — scrollWidth/clientWidth only reflect real layout once
+  // the element is in the live DOM, which it now is (appended above).
+  // Note: the tooltip has to go on `bar`, not `bl` — .bar-label has
+  // pointer-events:none (so drags pass through to the bar underneath),
+  // which also means the label itself never receives the hover events
+  // a native title tooltip depends on.
+  const bl = bar.querySelector('.bar-label');
+  if (bl.scrollWidth > bl.clientWidth) bar.title = task.name;
 }
 
 // ── Task hover info (start / end / duration, shown below the grid) ─────────
@@ -1290,26 +1279,18 @@ const taskInfoBar = document.getElementById('taskInfoBar');
 let hoveredTaskId = null;
 
 function showTaskInfo(task) {
-  const segs  = segsOf(task);
   const start = addDays(baseDate, task.start);
   const end   = addDays(baseDate, task.start + task.dur - 1); // inclusive last day
-  const total = totalDur(task);
   taskInfoBar.innerHTML = '';
   const nameEl = document.createElement('span');
   nameEl.className   = 'info-name';
   nameEl.textContent = task.name; // textContent, not innerHTML — task names are user input
   taskInfoBar.appendChild(nameEl);
-  (segs.length > 1
-    ? [
-        ...segs.map((g, i) => `#${i+1}: ${fmtDate(addDays(baseDate, g.start))} → ${fmtDate(addDays(baseDate, g.start + g.dur - 1))}`),
-        `Total: ${total} day${total === 1 ? '' : 's'}`,
-      ]
-    : [
-        `Start: ${fmtDate(start)}`,
-        `End: ${fmtDate(end)}`,
-        `Duration: ${task.dur} day${task.dur === 1 ? '' : 's'}`,
-      ]
-  ).forEach(text => {
+  [
+    `Start: ${fmtDate(start)}`,
+    `End: ${fmtDate(end)}`,
+    `Duration: ${task.dur} day${task.dur === 1 ? '' : 's'}`,
+  ].forEach(text => {
     const s = document.createElement('span');
     s.textContent = text;
     taskInfoBar.appendChild(s);
@@ -1349,8 +1330,6 @@ let dragState = null;
 // One-time delegated mousedown on the table covers both bars and cells
 document.getElementById('ganttTable').addEventListener('mousedown', e => {
   if (e.button !== 0) return;
-  if (e.target.closest('.task-col, .task-label')) { _lastDown = null; }
-  else if (isDoubleDown(e)) { e.preventDefault(); splitOrAddAt(e); return; }
   const bar  = e.target.closest('.bar');
   const cell = e.target.closest('.cell');
   if (bar) {
@@ -1369,19 +1348,15 @@ function gridLeftPx() {
   return wrap.getBoundingClientRect().left + LABEL_W;
 }
 
-function _startDrag(e, task, seg, action, day) {
-  const segs = segsOf(task).map(g => ({ start: g.start, dur: g.dur }));
-  dragState = { type: action ? 'resize' : 'move', action, task, seg, startDay: day,
-                origSegs: segs, origStart: task.start, origDur: task.dur };
-}
-
 function onBarMousedown(e, bar) {
   const action = e.target.dataset.action;
   const id     = +(bar.dataset.id);
   const task   = tasks.find(t=>t.id===id);
   if (!task) return;
   const startDay = xToDay(e.clientX - gridLeftPx());
-  _startDrag(e, task, +(bar.dataset.seg) || 0, action, startDay);
+  dragState = action
+    ? {type:'resize',action,task,startDay,origStart:task.start,origDur:task.dur}
+    : {type:'move',  task,   startDay,origStart:task.start,origDur:task.dur};
   e.preventDefault(); e.stopPropagation();
 }
 
@@ -1392,102 +1367,34 @@ function onCellMousedown(e, cell) {
 
   const day = xToDay(e.clientX - gridLeftPx());
 
-  // Empty area (outside every segment): move the whole task (seg = -1).
-  if (!segsOf(task).some(g => day >= g.start && day < g.start + g.dur)) {
-    _startDrag(e, task, -1, null, day);
+  if (day<task.start||day>=task.start+task.dur) {
+    dragState={type:'move',task,startDay:day,origStart:task.start,origDur:task.dur};
     e.preventDefault();
   }
 }
 
 document.addEventListener('mousemove', e => {
   if (!dragState) return;
-  // Resolve the day under the cursor absolutely via xToDay (no accumulated
-  // pixel deltas), so the bar tracks the cursor in every view mode.
+  // Always resolve the day directly under the cursor right now (an absolute
+  // lookup via xToDay), rather than accumulating a pixel delta through a
+  // per-day width that can silently change mid-drag (e.g. when a task
+  // crosses from a 31-day month into a 28-day one). This keeps the bar
+  // perfectly tracking the cursor with no snapping.
   const dayNow = xToDay(e.clientX - gridLeftPx());
   const delta  = dayNow - dragState.startDay;
-  const {task, origSegs, origStart, origDur, type, action, seg} = dragState;
-  const segs = origSegs.map(g => ({ start: g.start, dur: g.dur }));
-  // days = dayOffset(endDate)+1 when an end date is set, so clamping to
-  // <= days enforces the red-line boundary in all three modes.
-  if (seg < 0) {
-    // whole-task move: shift every segment together
-    const ns = Math.max(0, Math.min(origStart + delta, days - origDur));
-    const sh = ns - origStart;
-    segs.forEach(g => g.start += sh);
+  const {task,origStart,origDur,type,action} = dragState;
+  // `days` equals dayOffset(endDate)+1 when an end date is set, so clamping
+  // start+dur to <= days enforces the red-line boundary in all three modes.
+  if (type==='move') {
+    task.start = Math.max(0, Math.min(origStart + delta, days - origDur));
+  } else if (action==='left') {
+    const ns = Math.max(0, Math.min(origStart + origDur - 1, origStart + delta));
+    task.start = ns;
+    task.dur   = Math.max(1, origDur - (ns - origStart));
   } else {
-    const g  = segs[seg];
-    const lo = seg > 0 ? segs[seg-1].start + segs[seg-1].dur : 0;
-    const hi = seg < segs.length-1 ? segs[seg+1].start : days;
-    const o  = origSegs[seg];
-    if (type === 'move') {
-      g.start = Math.max(lo, Math.min(o.start + delta, hi - o.dur));
-    } else if (action === 'left') {
-      const ns = Math.max(lo, Math.min(o.start + o.dur - 1, o.start + delta));
-      g.start = ns; g.dur = Math.max(1, o.dur - (ns - o.start));
-    } else {
-      g.dur = Math.max(1, Math.min(o.dur + delta, hi - o.start));
-    }
+    task.dur = Math.max(1, Math.min(origDur + delta, days - origStart));
   }
-  setSegs(task, segs);
   updateBarInPlace(task);
-});
-
-// ── Split / add / remove segments ─────────────────────────────────────────
-// Double-click on a bar: split it at the cursor, leaving a one-day gap.
-// Double-click on an empty cell of a row: append/insert a new segment there.
-// Right-click a bar of a multi-segment task: remove that segment.
-// Detected from consecutive mousedowns rather than the native dblclick event:
-// the first click's mouseup triggers render(), which replaces the clicked
-// element, and browsers then don't deliver dblclick reliably.
-let _lastDown = null;
-function isDoubleDown(e) {
-  const row = e.target.closest('tr[data-id]');
-  const now = performance.now();
-  const day = xToDay(e.clientX - gridLeftPx());
-  const hit = _lastDown && row && _lastDown.id === row.dataset.id && _lastDown.day === day && now - _lastDown.t < 400;
-  _lastDown = row ? { id: row.dataset.id, day, t: now } : null;
-  if (hit) _lastDown = null;
-  return !!hit;
-}
-function splitOrAddAt(e) {
-  const row = e.target.closest('tr[data-id]');
-  if (!row || e.target.closest('.task-col, .task-label')) return;
-  const task = tasks.find(t => t.id === +row.dataset.id);
-  if (!task) return;
-  const day  = xToDay(e.clientX - gridLeftPx());
-  const segs = segsOf(task).map(g => ({ start: g.start, dur: g.dur }));
-  const i = segs.findIndex(g => day >= g.start && day < g.start + g.dur);
-  if (i >= 0) {
-    const g = segs[i];
-    if (g.dur < 3) return;
-    // cut day clamped so both parts keep >= 1 day
-    const cut = Math.max(g.start + 1, Math.min(day, g.start + g.dur - 2));
-    const second = { start: cut + 1, dur: g.start + g.dur - (cut + 1) };
-    g.dur = cut - g.start;
-    segs.splice(i + 1, 0, second);
-  } else {
-    if (day < 0 || day >= days) return;
-    const nxt = segs.find(g => g.start > day);
-    const room = (nxt ? nxt.start : days) - day;
-    if (room < 1) return;
-    segs.push({ start: day, dur: Math.min(3, room) });
-  }
-  setSegs(task, segs);
-  dragState = null;
-  render(); autoSave();
-}
-
-document.getElementById('ganttBody').addEventListener('contextmenu', e => {
-  const bar = e.target.closest('.bar');
-  if (!bar) return;
-  const task = tasks.find(t => t.id === +bar.dataset.id);
-  if (!task) return;
-  const segs = segsOf(task).map(g => ({ start: g.start, dur: g.dur }));
-  e.preventDefault();
-  if (segs.length < 2) return;
-  segs.splice(+bar.dataset.seg || 0, 1);
-  setSegs(task, segs);
-  render(); autoSave();
 });
 
 // Lightweight bar repositioning during drag — avoids full DOM rebuild and reflow jumps
@@ -1498,7 +1405,8 @@ function updateBarInPlace(task) {
   if (!row) return;
 
   // Remove existing bar
-  row.querySelectorAll('.bar, .seg-link').forEach(el => el.remove());
+  const existingBar = row.querySelector('.bar');
+  if (existingBar) existingBar.remove();
 
   _placeBarUnified(row, task, days);
 
@@ -1691,7 +1599,6 @@ function chartData() {
 
 function applyChartData(data) {
   tasks    = data.tasks;
-  tasks.forEach(t => { if (Array.isArray(t.segments)) setSegs(t, t.segments); else delete t.segments; });
   baseDate = new Date(data.baseDate+'T00:00:00');
   endDate  = data.endDate ? new Date(data.endDate+'T00:00:00') : null;
   if (endDate) {
@@ -1729,7 +1636,9 @@ function applyChartData(data) {
 }
 
 // ── Auto-save (localStorage) ───────────────────────────────────────────
+let sharedChartLoaded = false; // true while a chart opened from a #d= link is shown
 function autoSave() {
+  if (sharedChartLoaded) return; // never overwrite the user's own saved chart with a shared one
   try { localStorage.setItem('gantt_chart', JSON.stringify(chartData())); }
   catch { showToast('⚠️ Could not auto-save — storage full'); }
 }
@@ -1916,19 +1825,11 @@ function renderChartCanvas() {
 
     // Bar — positioned with dayToX, the same day↔pixel mapping the live
     // grid and dragging use, so it lands correctly in every view mode.
-    const segsArr = segsOf(task);
-    segsArr.forEach((g, si) => {
-      const barStart=Math.max(0,g.start);
-      const barEnd  =Math.min(days,g.start+g.dur);
-      if (!(barStart<days&&barEnd>0)) return;
+    const barStart=Math.max(0,task.start);
+    const barEnd  =Math.min(days,task.start+task.dur);
+    if (barStart<days&&barEnd>0) {
       const bx=LABEL_W+dayToX(barStart), bxEnd=LABEL_W+dayToX(barEnd);
       const bw=bxEnd-bx-1, bh=ROW_H-12;
-      const nx = segsArr[si+1];
-      if (nx && nx.start<days && nx.start>g.start+g.dur) {
-        ctx.fillStyle=task.color; ctx.globalAlpha=0.45;
-        ctx.fillRect(bxEnd, y+ROW_H/2-1, LABEL_W+dayToX(nx.start)-bxEnd, 2);
-        ctx.globalAlpha=1;
-      }
       ctx.fillStyle=task.color;
       ctx.beginPath(); ctx.roundRect(bx,y+6,bw,bh,4); ctx.fill();
       if (bw>20) {
@@ -1936,7 +1837,7 @@ function renderChartCanvas() {
         ctx.save(); ctx.beginPath(); ctx.rect(bx+2,y+6,bw-4,bh); ctx.clip();
         ctx.fillText(task.name, bx+6, y+6+bh/2+3); ctx.restore();
       }
-    });
+    }
   });
 
   // Label column right border
@@ -2189,8 +2090,100 @@ function showToast(msg) {
   setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),400); },1800);
 }
 
+// ── URL chart encoding ─────────────────────────────────────────────────
+// Format: <SHARE_BASE>#d=<base64url(zlib(JSON))>
+// JSON: {v:1, b:'YYYY-MM-DD', e:'YYYY-MM-DD'|null, d:days, t:[[name,start,dur,color],...]}
+// color is a COLORS index (integer) or a '#rrggbb' string.
+const SHARE_BASE = 'https://gip-triad.github.io/segsy/';
+const SHARE_MAX_TASKS = 500, SHARE_MAX_NAME = 200, SHARE_MAX_VAL = 100000;
+const SHARE_MAX_ENCODED = 60000, SHARE_MAX_DECODED = 1000000, SHARE_WARN_URL = 2000;
+
+function b64urlEncode(bytes) {
+  let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlDecode(str) {
+  if (!/^[A-Za-z0-9_-]*$/.test(str)) throw new Error('bad encoding');
+  const b = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+  return out;
+}
+
+async function encodeChartToHash() {
+  const d = chartData();
+  const payload = {
+    v: 1, b: d.baseDate, e: d.endDate, d: d.days,
+    t: d.tasks.map(t => {
+      const ci = COLORS.indexOf(t.color);
+      return [t.name, t.start, t.dur, ci >= 0 ? ci : t.color];
+    })
+  };
+  const bytes = await deflateBytes(new TextEncoder().encode(JSON.stringify(payload)));
+  return 'd=' + b64urlEncode(bytes);
+}
+
+// Returns a chartData()-shaped object, or throws on any invalid input.
+async function decodeChartFromHash(hash) {
+  const m = /^#?d=([A-Za-z0-9_-]+)$/.exec(hash || '');
+  if (!m) throw new Error('no chart data');
+  if (m[1].length > SHARE_MAX_ENCODED) throw new Error('too large');
+  const raw = await inflateBytes(b64urlDecode(m[1]));
+  if (raw.length > SHARE_MAX_DECODED) throw new Error('too large');
+  const p = JSON.parse(new TextDecoder().decode(raw));
+  const isDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00'));
+  const isInt = (n, min) => Number.isInteger(n) && n >= min && n <= SHARE_MAX_VAL;
+  if (!p || p.v !== 1 || !isDate(p.b) || !(p.e === null || p.e === undefined || isDate(p.e))
+      || !isInt(p.d, 1) || !Array.isArray(p.t) || p.t.length > SHARE_MAX_TASKS) throw new Error('invalid chart');
+  const tasks = p.t.map((r, i) => {
+    if (!Array.isArray(r) || typeof r[0] !== 'string' || r[0].length > SHARE_MAX_NAME
+        || !isInt(r[1], 0) || !isInt(r[2], 1)) throw new Error('invalid task');
+    let color;
+    if (Number.isInteger(r[3]) && r[3] >= 0 && r[3] < COLORS.length) color = COLORS[r[3]];
+    else if (typeof r[3] === 'string' && /^#[0-9a-fA-F]{6}$/.test(r[3])) color = r[3];
+    else throw new Error('invalid color');
+    return { id: i + 1, name: r[0], start: r[1], dur: r[2], color };
+  });
+  return { version: 1, baseDate: p.b, endDate: p.e || null, days: p.d, tasks };
+}
+
+async function buildShareUrl() { return SHARE_BASE + '#' + await encodeChartToHash(); }
+
+async function openLinkModal() {
+  let url;
+  try { url = await buildShareUrl(); }
+  catch { showToast('⚠️ Could not encode chart'); return; }
+  document.getElementById('linkUrl').value = url;
+  document.getElementById('linkMd').value = '[gantt chart](' + url + ')';
+  const note = document.getElementById('linkNote');
+  const long = url.length > SHARE_WARN_URL;
+  note.className = 'modal-note' + (long ? ' warn' : '');
+  note.textContent = long
+    ? `Link length: ${url.length} characters. Some services truncate links above ~2000 characters. Use the JSON export for large charts.`
+    : `Link length: ${url.length} characters.`;
+  document.getElementById('linkModal').classList.add('open');
+  document.getElementById('linkMd').focus(); document.getElementById('linkMd').select();
+}
+function closeLinkModal() { document.getElementById('linkModal').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLinkModal(); });
+
+async function copyField(id) {
+  const el = document.getElementById(id);
+  try { await navigator.clipboard.writeText(el.value); }
+  catch { el.focus(); el.select(); try { document.execCommand('copy'); } catch {} }
+  showToast('Copied');
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────
-(function() {
+(async function() {
+  if (/^#d=/.test(location.hash)) {
+    try {
+      const data = await decodeChartFromHash(location.hash);
+      sharedChartLoaded = true; // set before apply so render-time autosave is skipped
+      applyChartData(data);
+      showToast('Shared chart loaded — not saved locally');
+      return;
+    } catch { sharedChartLoaded = false; showToast('⚠️ Invalid chart link'); }
+  }
   try {
     const raw = localStorage.getItem('gantt_chart');
     if (raw) applyChartData(JSON.parse(raw));
